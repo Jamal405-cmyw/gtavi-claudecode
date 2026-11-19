@@ -6,3 +6,6 @@ test/
 *.wav
 *.ts
 !docs/*.mp4
+.pytest_cache/
+bench/cases/
+bench/results/
