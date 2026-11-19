@@ -2,7 +2,7 @@
 
 Nothing here is real footage. The generators produce signals with the *acoustic shape* of stream
 events (irregular speech syllables, rhythmic laughter, bright loud shouting, explosions) and of
-common false positives (a loud music bed, a mic bump, a chat spam bot). They exist so the pipeline
+common false positives (a loud music bed, loud gameplay nobody reacts to, a mic bump, a chat spam bot). They exist so the pipeline
 can be exercised end-to-end and reproducibly without downloading anyone's stream. Results on this
 suite say the mechanics work; they do NOT measure real-world clip quality (see bench/README.md).
 """
@@ -141,7 +141,7 @@ def episode(seed, dur=240, n_events=3, n_decoys=2):
         if t < dur:
             chat.append((float(t), f"viewer{rng.integers(0, 400)}", str(rng.choice(["hi", "nice car", "where is that", "lol", "go left", "first time?"]))))
     slots = np.linspace(25, dur - 30, n_events + n_decoys)
-    kinds = (["laugh", "shout", "explosion"] * 4)[:n_events] + (["music", "click", "spam"] * 3)[:n_decoys]
+    kinds = (["laugh", "chuckle", "shout", "explosion"] * 3)[:n_events] + (["gunfight", "music", "click", "spam"] * 3)[:n_decoys]
     order = rng.permutation(len(slots))
     talk_ranges = []
     for slot_i, k in zip(order, kinds):
@@ -167,6 +167,18 @@ def episode(seed, dur=240, n_events=3, n_decoys=2):
             chat += [(t + 3 + rng.uniform(0, 6), f"fan{i}", "WHAT ??") for i in range(30)]
             labels.append({"start": t - 3, "end": t + 4, "peak": t, "kind": k})
             talk_ranges.append((t - 3, t + 4))
+        elif k == "chuckle":  # quiet laugh at talking level: no loudness spike, chat laughs
+            add(x, speech(6, rng, level=0.05), t - 6); words += phrase_words(t - 5, "did he just drive into the lake", 0.5)
+            add(x, laugh(3, rng, level=0.06), t); words += phrase_words(t, "haha bro", 0.7)
+            vis.append(("cam", t, 2))
+            chat += [(t + 3 + rng.uniform(0, 7), f"fan{i}", "LUL") for i in range(22)]
+            labels.append({"start": t - 6, "end": t + 4, "peak": t, "kind": k})
+            talk_ranges.append((t - 6, t + 4))
+        elif k == "gunfight":  # decoy: 15 s of loud gameplay shooting, no reaction from streamer or chat
+            for j in range(12):
+                add(x, explosion(0.6, rng, level=0.45), t + j * 1.25 + rng.uniform(0, 0.3))
+            vis.append(("game", t, 15))
+            talk_ranges.append((t, t + 15))
         elif k == "music":  # decoy: loud music bed for 20 s, nobody reacts
             add(x, music(20, rng), t)
             talk_ranges.append((t, t + 20))
