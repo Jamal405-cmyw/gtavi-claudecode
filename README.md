@@ -57,7 +57,7 @@ No income is promised. Your result depends on speed, picks and hooks, and the sc
 | `campaign-finder` | Live campaigns: rate per 1K views, budget left, rules, link |
 | `trend-radar` | GTA 6 videos from the last 24 h ranked by views per hour |
 | `stream-finder` | Who is streaming GTA 6 right now, ranked by viewers |
-| `moment-finder` | Best 15 to 40 s moments, scored by loudness spikes, hype words, YouTube "most replayed" and chat spikes |
+| `moment-finder` | Best 15 to 40 s moments from a two-stage engine: cheap audio/transcript/chat scan, then frames, boundaries and scoring for the shortlist only ([how it works](docs/highlight-engine.md)) |
 | `live-mode` | Records a live stream and cuts a clip every time chat explodes |
 | `twitch-reaction` | Reaction clips like the viral ones: the streamer's face on top, the game below, a big title on the seam. Finds the top GTA 6 Twitch streams with no account, reads chat and finds the webcam by itself |
 | `clip-cutter` | 1080x1920 clip: word-by-word captions, hook box, credit line, -14 LUFS. Fill, blurred background or facecam on top |
@@ -82,12 +82,22 @@ No leaks, no "play early" or "free download" posts, no piracy, no GTA Online mon
 pip install -r requirements.txt
 python scripts/trends.py --query "gta 6" --hours 24
 python scripts/streams.py --query "gta 6"
-python scripts/moments.py "https://www.youtube.com/watch?v=..." --top 8
+python scripts/highlights.py "https://www.youtube.com/watch?v=..." --top 8
 python scripts/cut.py jobs/<id> --pick 2 --layout facecam --hook "Nobody noticed this" --credit "@creator"
 python scripts/check.py jobs/<id>/edits/clip_2.mp4 --campaign campaigns.md
 python scripts/live.py "https://www.youtube.com/watch?v=<live>" --minutes 60
 ```
 
 Windows, macOS or Linux, Python 3.10+. An NVIDIA GPU makes transcription faster; on the CPU a 12-minute video takes about 5 minutes.
+
+Tests and benchmark:
+
+```
+pip install -r requirements-dev.txt
+python -m pytest
+python bench/make_synthetic.py && python bench/run_benchmark.py
+```
+
+See [docs/AUDIT.md](docs/AUDIT.md) for the code audit and [bench/README.md](bench/README.md) for how to add your own labelled recordings.
 
 MIT license.

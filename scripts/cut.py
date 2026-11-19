@@ -140,7 +140,9 @@ def main():
     ap.add_argument("--start", type=float); ap.add_argument("--end", type=float)
     a = ap.parse_args()
     d = Path(a.job); c = load_json(d / "candidates.json")
-    pick = next(x for x in c["candidates"] if x["n"] == a.pick)
+    pick = next((x for x in c["candidates"] if x["n"] == a.pick), None)
+    if pick is None:
+        sys.exit(f"no candidate {a.pick} in {d / 'candidates.json'} (have: {[x['n'] for x in c['candidates']]})")
     s0 = a.start if a.start is not None else pick["start"]; e0 = a.end if a.end is not None else pick["end"]
     words = load_json(d / "transcript.json")
     out = d / "edits"; out.mkdir(exist_ok=True)
