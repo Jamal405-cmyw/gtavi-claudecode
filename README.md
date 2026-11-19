@@ -98,6 +98,6 @@ python -m pytest
 python bench/make_synthetic.py && python bench/run_benchmark.py
 ```
 
-See [docs/AUDIT.md](docs/AUDIT.md) for the code audit and [bench/README.md](bench/README.md) for how to add your own labelled recordings.
+See [docs/AUDIT.md](docs/AUDIT.md) for the code audit, [docs/real-vod-test.md](docs/real-vod-test.md) to compare detectors blind on a real VOD, and [bench/README.md](bench/README.md) for labelled benchmarks.
 
 MIT license.
