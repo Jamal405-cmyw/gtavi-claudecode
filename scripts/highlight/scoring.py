@@ -83,7 +83,8 @@ def score(stage, feats, b, words, vis, peak_score, top_peak, ideal=(15, 35)):
     if opening and (any(w["w"].rstrip()[-1:] in "!?" for w in opening) or tag_words(opening)):
         hook = min(1.0, hook + 0.15); ev.append("opening line is a question/exclamation")
     crowd = sat(0.8 * max(burst, 0) + 0.3 * m("heat"))
-    strength = float(np.clip(peak_score / (top_peak + 1e-9), 0, 1))
+    # half relative to this video's best moment, half absolute, so a flat video's "best" is not a 1.0
+    strength = 0.5 * float(np.clip(peak_score / (top_peak + 1e-9), 0, 1)) + 0.5 * sat(peak_score / 3.0)
     peak_dims = max(humour, surprise, intensity)
     ent = (0.25 * peak_dims + 0.15 * (humour + surprise + intensity) / 3 + 0.2 * strength + 0.15 * crowd
            + 0.15 * watch + 0.10 * hook)

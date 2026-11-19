@@ -51,6 +51,8 @@ def main(argv=None):
     dur = float(probe["format"]["duration"])
     if (info.get("duration") or 0) > a.max_minutes * 60:
         print(f"note: only the first {a.max_minutes} min were downloaded and analysed (--max-minutes)")
+    if not any(st.get("codec_type") == "audio" for st in probe.get("streams", [])):
+        sys.exit(f"{vid} has no audio track: the highlight engine needs audio (speech, reactions, game sound)")
     wav, _ = moments.audio_rms(vid, d)
     words = []
     if (d / "transcript.json").exists() or not a.no_transcribe:

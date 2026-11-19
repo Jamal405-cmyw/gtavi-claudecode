@@ -29,6 +29,7 @@ class Config:
     hwaccel: str = "auto"
     weights: dict = field(default_factory=dict)
     seed: int = 0
+    min_evidence: int = 1         # modalities that must clearly fire for a pick to be kept
 
 
 def parse_cam(cam):
@@ -99,13 +100,15 @@ def analyse(video, wav, words, duration, cfg=Config(), chat_msgs=None, info=None
         b = B.compute(p, st.score, words, au["db"], duration, cfg.min_len, cfg.max_len)
         cands.append({"peak": p, "b": b})
     box, base = None, None
-    do_vis = cfg.visual and has_video and video is not None
+    do_vis = cfg.visual and has_video and video is not None and bool(cands)
     if do_vis:
         box = _facecam(video, d or Path(video).parent, cfg.cam, notes)
         base = V.baseline(video, duration, [(c["b"].start, c["b"].end) for c in cands], box, fps=cfg.vis_fps,
                           seed=cfg.seed, hwaccel=cfg.hwaccel)
-    elif cfg.visual:
+    elif cfg.visual and not has_video:
         notes.append("no video stream: visual signal skipped")
+    if duration < cfg.min_len:
+        notes.append(f"video is {duration:.0f}s, shorter than --min {cfg.min_len:g}s: clips cannot reach the minimum length")
     tm["vis_frames"] = 0
     results = []
     for c in cands:
@@ -121,6 +124,11 @@ def analyse(video, wav, words, duration, cfg=Config(), chat_msgs=None, info=None
                         "visual": {k: v for k, v in (vis or {}).items() if k != "hashes"} or None,
                         "hashes": (vis or {}).get("hashes", [])})
     tm["stage_b_s"] = round(time.perf_counter() - t1, 3)
+    # a pick needs at least `min_evidence` modalities that clearly fire; "loudest bit of a flat video" is not one
+    weak = [r for r in results if len(r["signals"]["modalities_agreeing"]) < cfg.min_evidence]
+    results = [r for r in results if len(r["signals"]["modalities_agreeing"]) >= cfg.min_evidence]
+    if weak:
+        notes.append(f"{len(weak)} shortlisted moment(s) dropped: no signal clearly fired (min_evidence={cfg.min_evidence})")
     results.sort(key=lambda r: -r["scores"]["entertainment"])
     for i, r in enumerate(results, 1):
         r["id"] = f"{(d.name if d else 'job')}#{i}"
@@ -133,7 +141,7 @@ def analyse(video, wav, words, duration, cfg=Config(), chat_msgs=None, info=None
     return {"engine": f"highlight-v{ENGINE_VERSION}", "duration": duration, "config": asdict(cfg),
             "device": accel.summary(), "timings": tm, "notes": notes, "disclaimer": S.DISCLAIMER,
             "signals": {k: v for k, v in st.weights.items()}, "facecam_box": box,
-            "shortlisted": len(cands), "highlights": kept,
+            "shortlisted": len(cands), "rejected_low_evidence": len(weak), "highlights": kept,
             "duplicates": [{"start": r["start"], "end": r["end"], "duplicate_of": r["duplicate_of"],
                             "reason": r["duplicate_reason"]} for r in dropped]}
 

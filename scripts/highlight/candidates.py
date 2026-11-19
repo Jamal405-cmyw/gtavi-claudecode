@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 import numpy as np
 from .util import peaks, pos, robust_z, smooth
 
+JUMP_DB = (2.0, 6.0)    # level above the 30 s local average: no credit below 2 dB, full credit from 6 dB
+ONSET_DB = (4.0, 10.0)  # 300 ms rise
 DEFAULT_WEIGHTS = {"loud": 1.0, "onset": 0.5, "bright": 0.6, "laugh": 1.2, "text": 1.0, "rate": 0.3,
                    "chat": 1.6, "heat": 1.5}
 
@@ -24,11 +26,16 @@ def evidence(audio, text=None, chat=None, heat=None):
     """Per-second evidence channels from the raw feature dicts."""
     n = len(audio["db"])
     act = audio["active"]
+    jump, onset = audio["jump"], audio["onset"]
+    # Absolute gates: a z-score alone turns tiny wobbles in flat audio (steady noise, a music bed) into
+    # "spikes". A level jump must be >= ~3 dB and an onset >= ~6 dB before it can count at all.
+    g_jump = np.clip((jump - JUMP_DB[0]) / (JUMP_DB[1] - JUMP_DB[0]), 0, 1)
+    g_onset = np.clip((onset - ONSET_DB[0]) / (ONSET_DB[1] - ONSET_DB[0]), 0, 1)
     ch = {
-        "loud": smooth(pos(robust_z(audio["jump"])), 3),
-        "onset": smooth(pos(robust_z(audio["onset"])), 2),
+        "loud": smooth(pos(robust_z(jump)) * g_jump, 3),
+        "onset": smooth(pos(robust_z(onset)) * g_onset, 2),
         # timbre only counts when the second is actually loud (quiet hiss is often "bright")
-        "bright": smooth(pos(robust_z(audio["bright"])) * (act > 0.5) * (audio["jump"] > 0), 3),
+        "bright": smooth(pos(robust_z(audio["bright"])) * (act > 0.5) * g_jump, 3),
         "laugh": smooth(audio["laugh"] * 3.0, 3),
     }
     if text is not None and text.get("has_words"):
