@@ -86,8 +86,20 @@ def score(stage, feats, b, words, vis, peak_score, top_peak, ideal=(15, 35)):
     # half relative to this video's best moment, half absolute, so a flat video's "best" is not a 1.0
     strength = 0.5 * float(np.clip(peak_score / (top_peak + 1e-9), 0, 1)) + 0.5 * sat(peak_score / 3.0)
     peak_dims = max(humour, surprise, intensity)
+    # ---------- reaction gate: loud gameplay nobody reacts to is the most common false positive
+    reaction = window_max(feats["reaction"], s, e) if "reaction" in feats else None
+    can_judge = bool(words) or chat_on or (vis is not None and vis.get("cam_motion_z") is not None)
+    reacted = (reaction or 0) >= 0.3 or cz > 3 or m("heat") > 1
+    gate = 1.0
+    if reaction is not None and can_judge and not reacted:
+        gate = 0.6
+        ev.append("no reaction from streamer, chat or facecam (loud game audio only?) - ranked down")
+    loud_secs = int(np.sum(au["jump"][max(0, int(s)):int(e) + 1] > 6))
+    if loud_secs <= 1 and not reacted and m("onset") > 0:
+        gate *= 0.8
+        ev.append("single short sound spike (mic bump or click?)")
     ent = (0.25 * peak_dims + 0.15 * (humour + surprise + intensity) / 3 + 0.2 * strength + 0.15 * crowd
-           + 0.15 * watch + 0.10 * hook)
+           + 0.15 * watch + 0.10 * hook) * gate
     # ---------- confidence: how many independent modalities agree, and how many we could see
     avail = ["audio"] + (["text"] if words else []) + (["chat"] if chat_on else []) \
         + (["visual"] if vis and vis.get("frames", 0) > 1 else []) + (["heat"] if stage.weights.get("heat", 0) > 0 else [])
@@ -103,4 +115,6 @@ def score(stage, feats, b, words, vis, peak_score, top_peak, ideal=(15, 35)):
     dims = {"entertainment": ent, "humour": humour, "surprise": surprise, "emotional_intensity": intensity,
             "contextual_clarity": clarity, "standalone_watchability": watch, "hook_potential": hook}
     return {k: round(float(v), 3) for k, v in dims.items()}, round(conf, 2), ev, {"modalities_available": avail,
-                                                                                     "modalities_agreeing": sorted(agree)}
+                                                                                     "modalities_agreeing": sorted(agree),
+                                                                                     "reaction": None if reaction is None else round(reaction, 2),
+                                                                                     "gate": round(gate, 2)}

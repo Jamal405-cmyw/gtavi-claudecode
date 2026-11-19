@@ -47,9 +47,28 @@ def _quiet_point(db, lo, hi):
     return float(lo + int(np.argmin(db[lo:hi])))
 
 
+def extend_tail(ev_e, reaction, thr=0.3, max_extra=10, gap=1):
+    """Push the event end past a reaction that is still going (laughter, chat, exclamations).
+    A pause of up to `gap` seconds inside the reaction is tolerated."""
+    if reaction is None:
+        return ev_e
+    n = len(reaction)
+    b, last, quiet = int(ev_e), int(ev_e), 0
+    while b < n and b - int(ev_e) < max_extra:
+        if reaction[b] >= thr:
+            last, quiet = b + 1, 0
+        else:
+            quiet += 1
+            if quiet > gap:
+                break
+        b += 1
+    return float(max(ev_e, last))
+
+
 def compute(peak, score, words, db, duration, min_len=15.0, max_len=40.0, lead=(3.0, 15.0), target_lead=7.0,
-            tail=(1.0, 12.0), keep=0.4):
+            tail=(1.0, 12.0), keep=0.4, reaction=None):
     ev_s, ev_e = event_region(score, peak, keep=keep)
+    ev_e = extend_tail(ev_e, reaction)
     starts = sentence_starts(words) if words else []
     ends = sentence_ends(words) if words else []
     # ---- start

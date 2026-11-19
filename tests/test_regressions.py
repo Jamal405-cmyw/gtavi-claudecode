@@ -100,3 +100,48 @@ def test_baseline_is_frozen():
 
 
 BASELINE_SHA256 = "04ce3cc8520810f468fccd10a2dfcb42b912f6031bab36ee76d9aaea2dc5f5c6"
+
+
+# ---------- false positives / boundaries (hand-built per-second features)
+def _feats(n=120, burst_at=60):
+    rng = np.random.default_rng(3)
+    x = rng.normal(0, 0.02, SR * n)
+    x[SR * burst_at: SR * (burst_at + 4)] += rng.normal(0, 0.3, SR * 4)  # loud game sound, 4 s
+    return audio.features(x=x.astype(np.float32))
+
+
+def _score_pick(au, words, ct):
+    from highlight import boundaries, scoring, text as T
+    n = len(au["db"])
+    tx = T.features(words, n) if words else None
+    st = candidates.run(au, tx, ct)
+    feats = {"audio": au, "text": tx, "chat": ct, "heat": np.zeros(n), "reaction": candidates.reaction_series(au, tx, ct)}
+    p = st.shortlist[0]
+    b = boundaries.compute(p, st.score, words, au["db"], n, reaction=feats["reaction"])
+    return scoring.score(st, feats, b, words, None, st.score[p], st.score[p]), b
+
+
+def test_loud_game_sound_without_reaction_is_ranked_down():
+    from conftest import W
+    from highlight import chat
+    au = _feats()
+    calm = W("okay heading to the garage now and then the shop after that", 40, 0.9) + W("yeah so anyway", 66)
+    quiet_chat = chat.features([(float(t), f"u{t % 30}", "hi") for t in range(120)], 120)
+    (dims0, _, ev0, sig0), _ = _score_pick(au, calm, quiet_chat)
+    react_chat = chat.features([(float(t), f"u{t % 30}", "hi") for t in range(120)]
+                               + [(64 + i * 0.1, f"fan{i}", "KEKW LMAO") for i in range(40)], 120)
+    react_words = calm[:-3] + W("no way hahaha", 61)
+    (dims1, _, ev1, sig1), _ = _score_pick(au, react_words, react_chat)
+    assert sig0["gate"] < 1 and any("no reaction" in e for e in ev0)
+    assert sig1["gate"] == 1.0 and dims1["entertainment"] > dims0["entertainment"] + 0.1
+
+
+def test_reaction_tail_extends_clip_end():
+    from highlight import boundaries
+    n = 100
+    score = np.zeros(n); score[40:43] = 2.0
+    reaction = np.zeros(n); reaction[40:52] = 0.8; reaction[47] = 0.1  # laughter with a 1 s breath, until 52
+    assert boundaries.extend_tail(43.0, reaction) == 52.0
+    b = boundaries.compute(41, score, [], np.full(n, -30.0), n, min_len=5, max_len=40, reaction=reaction)
+    assert b.ev_end == 52.0 and b.end >= 52.0
+    assert boundaries.extend_tail(43.0, None) == 43.0

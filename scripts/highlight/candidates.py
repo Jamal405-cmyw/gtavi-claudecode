@@ -69,3 +69,18 @@ def firing(stage, t, radius=6, thresh=1.0):
     """Channels that clearly fire within +-radius s of t (their max >= thresh)."""
     s, e = max(0, int(t - radius)), min(stage.n, int(t + radius) + 1)
     return sorted(k for k, v in stage.channels.items() if stage.weights.get(k, 0) > 0 and e > s and v[s:e].max() >= thresh)
+
+
+def reaction_series(audio, text=None, chat=None):
+    """Per second, 0..1: is a *person* reacting (laughing, exclaiming, chat laughing/hyping)?
+    Game sound alone never counts. Used for the reaction gate and for extending clip ends."""
+    n = len(audio["db"])
+    r = np.clip(audio["laugh"] / 0.5, 0, 1)
+    if text is not None and text.get("has_words"):
+        lex = text["surprise"] + text["hype"] + text["laugh"] + text["tension"] + text["repeat"]
+        r = np.maximum(r, np.clip(lex[:n] / 2, 0, 1))
+    if chat is not None and chat.get("n_msgs", 0) > 0:
+        mix = chat["laugh"] + chat["hype"] + chat["surprise"]
+        r = np.maximum(r, np.clip(pos(chat["burst"][:n]) * (0.5 + mix[:n]), 0, 1))
+    return r
+

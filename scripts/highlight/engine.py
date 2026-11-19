@@ -86,6 +86,7 @@ def analyse(video, wav, words, duration, cfg=Config(), chat_msgs=None, info=None
     feats = {"audio": au, "text": tx, "chat": ct, "heat": heat}
     k = cfg.shortlist or max(15, 3 * cfg.top)
     st = C.run(au, tx, ct, heat, weights=cfg.weights, shortlist=k, min_sep=cfg.min_sep)
+    feats["reaction"] = C.reaction_series(au, tx, ct)
     tm["stage_a_s"] = round(time.perf_counter() - t0, 3)
     if not words:
         notes.append("no transcript: boundaries use audio only, contextual clarity is not judged")
@@ -97,7 +98,7 @@ def analyse(video, wav, words, duration, cfg=Config(), chat_msgs=None, info=None
     cands = []
     top_peak = float(st.score[st.shortlist[0]]) if st.shortlist else 1.0
     for p in st.shortlist:
-        b = B.compute(p, st.score, words, au["db"], duration, cfg.min_len, cfg.max_len)
+        b = B.compute(p, st.score, words, au["db"], duration, cfg.min_len, cfg.max_len, reaction=feats["reaction"])
         cands.append({"peak": p, "b": b})
     box, base = None, None
     do_vis = cfg.visual and has_video and video is not None and bool(cands)
