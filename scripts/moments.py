@@ -48,27 +48,35 @@ def audio_rms(vid, d):
     return wav, 20 * np.log10(rms)
 
 
-def transcribe(wav, d):
+def transcribe(wav, d, model="small", device=None):
+    """Word timestamps via faster-whisper, cached in transcript.json. device None = CUDA if present else CPU."""
     out = d / "transcript.json"
     if out.exists():
         return load_json(out)
     from faster_whisper import WhisperModel
-    try:
-        import ctranslate2
-        cuda = ctranslate2.get_cuda_device_count() > 0
-    except Exception:
-        cuda = False
+    if device in ("cuda", "cpu"):
+        cuda = device == "cuda"
+    else:
+        try:
+            import ctranslate2
+            cuda = ctranslate2.get_cuda_device_count() > 0
+        except Exception:
+            cuda = False
     with wave.open(str(wav)) as w:  # pass samples directly (16 kHz mono), no extra decoder needed
         pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768
 
     def run_on(device):
-        model = WhisperModel("small", device=device, compute_type="float16" if device == "cuda" else "int8")
-        segs, _ = model.transcribe(pcm, word_timestamps=True, vad_filter=True)
+        m = WhisperModel(model, device=device, compute_type="float16" if device == "cuda" else "int8")
+        segs, _ = m.transcribe(pcm, word_timestamps=True, vad_filter=True)
         return [{"w": w.word.strip(), "s": round(w.start, 2), "e": round(w.end, 2)} for s in segs for w in (s.words or [])]
     try:
         words = run_on("cuda" if cuda else "cpu")
     except RuntimeError as e:  # GPU present but CUDA libraries missing: fall back to CPU
+        if not cuda:
+            raise
         print(f"GPU transcription unavailable ({str(e)[:80]}), using CPU")
+        if model.startswith("large"):  # large models are too slow on CPU for long VODs
+            model = "small"
         words = run_on("cpu")
     save_json(out, words)
     return words
