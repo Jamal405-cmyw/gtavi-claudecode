@@ -12,6 +12,7 @@ not predict views or virality, and the output says so.
   hook_potential           how early the clip gets going; opening line is a question/exclamation
 """
 import numpy as np
+from . import dialogue as DL
 from .text import tag_words
 from .util import sat, window_max, window_mean
 
@@ -58,16 +59,24 @@ def score(stage, feats, b, words, vis, peak_score, top_peak, ideal=(15, 35)):
     if cuts: ev.append(f"{cuts} hard visual change(s)")
     if flash > 40: ev.append("bright flash on screen")
 
+    dl = DL.analyse(words, b.start, b.end, b.ev_start, b.ev_end) if words else None
+    if dl:
+        ev += DL.evidence(dl)
+    laughing = laugh_a > 0.35 or lex.get("laugh", 0) >= 1 or cl.get("laugh", 0) > 0.25
+    sp = 1.0 if dl and dl["setup_payoff"] else 0.0
     # ---------- dimensions
-    humour = sat(1.6 * laugh_a + 0.5 * lex.get("laugh", 0) + 2.5 * cl.get("laugh", 0) * max(burst, 0))
+    humour = sat(1.6 * laugh_a + 0.5 * lex.get("laugh", 0) + 2.5 * cl.get("laugh", 0) * max(burst, 0)
+                 + (0.4 * sp if laughing else 0.0))
     surprise = sat(0.15 * m("onset") + 0.35 * lex.get("surprise", 0) + 2.0 * cl.get("surprise", 0) * max(burst, 0)
-                   + 0.08 * max(gz, 0) + 0.25 * min(cuts, 3) + (0.4 if flash > 40 else 0))
+                   + 0.08 * max(gz, 0) + 0.25 * min(cuts, 3) + (0.4 if flash > 40 else 0)
+                   + (0.4 if dl and dl["stunned_silence"] else 0) + (0.3 if dl and dl["question_reaction"] else 0))
     intensity = sat(0.2 * m("loud") + 0.25 * m("bright") + 0.1 * m("rate") + 0.07 * max(cz, 0)
-                    + 0.3 * lex.get("hype", 0) + 0.25 * lex.get("tension", 0) + 0.2 * lex.get("repeat", 0))
+                    + 0.3 * lex.get("hype", 0) + 0.25 * lex.get("tension", 0) + 0.2 * lex.get("repeat", 0)
+                    + 0.6 * (dl["argument"] if dl else 0))
     setup_words = sum(1 for w in words if b.start <= w["s"] < b.ev_start)
     if words:
         clarity = 0.35 + 0.35 * min(1.0, setup_words / 8) + (0.0 if b.mid_sentence_start else 0.15) \
-            + (0.0 if b.mid_sentence_end else 0.1) - (0.1 if b.dangling_start else 0.0)
+            + (0.0 if b.mid_sentence_end else 0.1) - (0.1 if b.dangling_start else 0.0) + 0.1 * sp
     else:
         clarity = 0.35  # cannot judge context without a transcript
     clarity = float(np.clip(clarity, 0, 1))
@@ -105,7 +114,7 @@ def score(stage, feats, b, words, vis, peak_score, top_peak, ideal=(15, 35)):
         + (["visual"] if vis and vis.get("frames", 0) > 1 else []) + (["heat"] if stage.weights.get("heat", 0) > 0 else [])
     agree = set()
     if laugh_a > 0.35 or m("loud") > 1.5 or m("bright") > 1.5 or m("onset") > 2: agree.add("audio")
-    if any(v >= 1 for v in lex.values()): agree.add("text")
+    if any(v >= 1 for v in lex.values()) or (dl and (dl["setup_payoff"] or dl["argument"] >= 0.5)): agree.add("text")
     if chat_on and burst > 0.4: agree.add("chat")
     if gz > 3 or cz > 3 or cuts or flash > 40: agree.add("visual")
     if m("heat") > 1: agree.add("heat")
@@ -117,4 +126,5 @@ def score(stage, feats, b, words, vis, peak_score, top_peak, ideal=(15, 35)):
     return {k: round(float(v), 3) for k, v in dims.items()}, round(conf, 2), ev, {"modalities_available": avail,
                                                                                      "modalities_agreeing": sorted(agree),
                                                                                      "reaction": None if reaction is None else round(reaction, 2),
-                                                                                     "gate": round(gate, 2)}
+                                                                                     "gate": round(gate, 2),
+                                                                                     "dialogue": dl}

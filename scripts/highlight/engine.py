@@ -120,6 +120,7 @@ def analyse(video, wav, words, duration, cfg=Config(), chat_msgs=None, info=None
         dims, conf, ev, mods = S.score(st, feats, b, words, vis, float(st.score[p]), top_peak)
         results.append({"start": b.start, "end": b.end, "peak": int(p), "length": round(b.end - b.start, 2),
                         "stage_a_score": round(float(st.score[p]), 3), "scores": dims, "confidence": conf,
+                        "dialogue": mods.pop("dialogue", None),
                         "evidence": ev or ["overall energy above this stream's norm"], "signals": mods,
                         "text": T.text_between(words, b.start, b.end)[:600], "boundary": b.as_dict(),
                         "visual": {k: v for k, v in (vis or {}).items() if k != "hashes"} or None,
@@ -166,8 +167,11 @@ def write_outputs(d, res, source, info):
                f"entertainment {s['entertainment']:.2f} · confidence {r['confidence']:.2f}",
                "scores: " + ", ".join(f"{k.replace('_', ' ')} {s[k]:.2f}" for k in S.DIMENSIONS[1:]),
                "why: " + "; ".join(r["evidence"]),
-               f"boundaries: {r['boundary']['start_reason']} → {r['boundary']['end_reason']}",
-               f"> {r['text'] or '(no speech)'}", ""]
+               f"boundaries: {r['boundary']['start_reason']} → {r['boundary']['end_reason']}"]
+        sm = (r.get("dialogue") or {}).get("summary")
+        if sm:
+            md += [f"setup (verbatim): \"{sm['setup']}\"", f"reaction (verbatim): \"{sm['reaction']}\""]
+        md += [f"> {r['text'] or '(no speech)'}", ""]
     (d / "highlights.md").write_text("\n".join(md), encoding="utf-8")
     cands = [{"n": r["n"], "start": r["start"], "end": r["end"], "peak": r["peak"],
               "score": r["scores"]["entertainment"], "why": r["evidence"], "text": r["text"][:400],
