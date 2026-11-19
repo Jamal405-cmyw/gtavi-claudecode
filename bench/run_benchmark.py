@@ -29,6 +29,11 @@ SYSTEMS = {
                                       "--no-transcribe", "--cam", cam] + (["--chat", chat] if chat else []),
     "new_novisual": lambda v, chat, cam, top: [sys.executable, str(ROOT / "scripts" / "highlights.py"), v, "--top", str(top),
                                                "--no-transcribe", "--no-visual"] + (["--chat", chat] if chat else []),
+    # opt-in: needs a local Ollama server with the model pulled (--systems baseline,new,new_judge)
+    "new_judge": lambda v, chat, cam, top: [sys.executable, str(ROOT / "scripts" / "highlights.py"), v, "--top", str(top),
+                                            "--no-transcribe", "--cam", cam, "--judge", "ollama",
+                                            "--judge-model", os.environ.get("JUDGE_MODEL", "qwen2.5vl:7b")]
+    + (["--chat", chat] if chat else []),
 }
 
 

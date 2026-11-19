@@ -11,7 +11,6 @@ Looks at the *structure* of what is said around the event, not just hype words:
 Everything is derived from the transcript; nothing is generated. The summary is for the human
 reviewer and the hook writer; it must not be presented as a quote from someone other than the streamer.
 """
-import re
 from .text import norm, sentence_ends, sentence_starts, tag_words
 
 DISAGREE = ["no you", "that's not", "thats not", "you're wrong", "youre wrong", "shut up", "i told you",

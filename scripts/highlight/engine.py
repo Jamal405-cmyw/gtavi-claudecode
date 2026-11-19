@@ -11,7 +11,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 import numpy as np
 from . import ENGINE_VERSION, accel, audio as A, boundaries as B, candidates as C, chat as CH, dedupe as D
-from . import scoring as S, text as T, visual as V
+from . import judge as J, scoring as S, text as T, visual as V
 
 
 @dataclass
@@ -30,6 +30,12 @@ class Config:
     weights: dict = field(default_factory=dict)
     seed: int = 0
     min_evidence: int = 1         # modalities that must clearly fire for a pick to be kept
+    judge: str = "none"           # none | ollama  (optional local VLM re-scoring of the top clips)
+    judge_model: str = "qwen2.5vl:7b"
+    judge_host: str = "http://127.0.0.1:11434"
+    judge_top: int = 6
+    judge_weight: float = 0.35
+    judge_images: bool = True
 
 
 def parse_cam(cam):
@@ -135,6 +141,12 @@ def analyse(video, wav, words, duration, cfg=Config(), chat_msgs=None, info=None
     for i, r in enumerate(results, 1):
         r["id"] = f"{(d.name if d else 'job')}#{i}"
     kept, dropped = D.dedupe(results, others)
+    if cfg.judge == "ollama" and kept:
+        t2 = time.perf_counter()
+        jd = J.OllamaJudge(cfg.judge_model, cfg.judge_host, images=cfg.judge_images and do_vis,
+                           cache_dir=(d / "judge_cache") if d else None)
+        J.apply(kept, video if do_vis else None, jd, cfg.judge_top, cfg.judge_weight, notes, tm)
+        tm["stage_c_s"] = round(time.perf_counter() - t2, 3)
     kept = kept[: cfg.top]
     for i, r in enumerate(kept, 1):
         r["rank"] = r["n"] = i

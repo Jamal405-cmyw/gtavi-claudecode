@@ -9,6 +9,7 @@ usage: python highlights.py <url-or-file> [--top 8] [--min 15] [--max 40] [--cha
        [--chat-lag 5] [--chat-offset UNIX] [--cam auto|none|x:y:w:h] [--no-visual]
        [--whisper-model auto|small|large-v3-turbo|...] [--device auto|cuda|cpu] [--no-transcribe]
        [--max-minutes 90] [--dedupe-against jobs/*/highlights.json]
+       [--judge ollama --judge-model qwen2.5vl:7b --judge-top 6]   optional local VLM, off by default
 """
 import argparse, glob, json, sys
 from pathlib import Path
@@ -40,6 +41,11 @@ def main(argv=None):
     ap.add_argument("--whisper-model", default="auto"); ap.add_argument("--device", default="auto")
     ap.add_argument("--no-transcribe", action="store_true", help="skip Whisper if no transcript.json is cached")
     ap.add_argument("--max-minutes", type=int, default=90)
+    ap.add_argument("--judge", choices=["none", "ollama"], default="none",
+                    help="optional local VLM re-scoring of the top clips via Ollama (off by default)")
+    ap.add_argument("--judge-model", default="qwen2.5vl:7b"); ap.add_argument("--judge-host", default="http://127.0.0.1:11434")
+    ap.add_argument("--judge-top", type=int, default=6); ap.add_argument("--judge-weight", type=float, default=0.35)
+    ap.add_argument("--judge-images", type=int, default=1, help="0 = send transcript only (text model)")
     ap.add_argument("--dedupe-against", nargs="*", default=[], help="other highlights.json files (globs ok)")
     a = ap.parse_args(argv)
 
@@ -68,7 +74,8 @@ def main(argv=None):
             if Path(f).resolve() != (d / "highlights.json").resolve():
                 others += json.loads(Path(f).read_text(encoding="utf-8")).get("highlights", [])
     cfg = Config(top=a.top, min_len=a.min, max_len=a.max, chat_lag=a.chat_lag, chat_offset=a.chat_offset,
-                 visual=not a.no_visual, cam=a.cam, hwaccel=a.hwaccel)
+                 visual=not a.no_visual, cam=a.cam, hwaccel=a.hwaccel, judge=a.judge, judge_model=a.judge_model,
+                 judge_host=a.judge_host, judge_top=a.judge_top, judge_weight=a.judge_weight, judge_images=bool(a.judge_images))
     res = analyse(vid, wav, words, dur, cfg, chat_msgs=msgs, info=info, d=d,
                   has_video=has_video_stream(probe), others=others)
     res["chat_file"] = str(cpath) if cpath else None
