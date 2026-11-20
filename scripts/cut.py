@@ -103,28 +103,53 @@ CAP_Y = {"fill": 1380, "blur": 1460, "facecam": 1120, "react": 1560}
 TOP = int(H * 0.38)  # react layout: facecam height
 
 
-def video_filter(layout, cam, ass, band=None, cam_side='right'):
-    """Layout + burned-caption filter graph ending in [vo]. Reused by translate.py."""
+def video_filter(layout, cam, ass, band=None, cam_side='right', game_x=None, cam_crop=None):
+    """Layout + burned-caption filter graph ending in [vo]. Reused by translate.py.
+    game_x: ffmpeg crop-x expression for the gameplay panel (reframe.crop_x_expr); None = old fixed crop.
+    cam_crop: 'x:y:w:h' face-centred crop inside the webcam box (reframe.face_crop); None = whole box."""
+    gx_opt = f":x='{game_x}'" if game_x else ""
     if layout == "fill":
-        v = f"[0:v]scale=-2:{H},crop={W}:{H}[v]"
+        v = f"[0:v]scale=-2:{H},crop=w={W}:h={H}{gx_opt}:y=0[v]" if game_x else f"[0:v]scale=-2:{H},crop={W}:{H}[v]"
     elif layout == "blur":
         v = (f"[0:v]split[a][b];[a]scale=-2:{H},crop={W}:{H},boxblur=24:2,eq=brightness=-0.08[bg];"
              f"[b]scale={W}:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2-80[v]")
     elif layout == 'react':
-        x, y, w, h = map(float, cam.split(':'))
+        x, y, w, h = map(float, (cam_crop or cam).split(':'))
         gx = 'iw-ow' if cam_side == 'left' else '0'  # crop the gameplay away from the webcam corner
+        gcrop = f"crop=w={W}:h={H - TOP}{gx_opt}:y=0" if game_x else f"crop={W}:{H - TOP}:{gx}:0"
         v = (f"[0:v]split[a][b];[a]crop=iw*{w}:ih*{h}:iw*{x}:ih*{y},scale={W}:{TOP}:force_original_aspect_ratio=increase,"
-             f"crop={W}:{TOP}[cam];[b]scale=-2:{H - TOP},crop={W}:{H - TOP}:{gx}:0[game];[cam][game]vstack[v]")
+             f"crop={W}:{TOP}[cam];[b]scale=-2:{H - TOP},{gcrop}[game];[cam][game]vstack[v]")
         if band:
             y0, bh, secs = band
             en = f":enable='lte(t,{secs})'" if secs > 0 else ''
             v = v[:-3] + f"[v0];[v0]drawbox=x=0:y={y0}:w=iw:h={bh}:color=white@1:t=fill{en}[v]"
     else:
-        x, y, w, h = map(float, cam.split(":"))
+        x, y, w, h = map(float, (cam_crop or cam).split(":"))
+        gcrop = f"crop=w={W}:h={H - int(H * 0.38)}{gx_opt}:y=0" if game_x else f"crop={W}:{H - int(H * 0.38)}"
         v = (f"[0:v]split[a][b];[a]crop=iw*{w}:ih*{h}:iw*{x}:ih*{y},scale={W}:{int(H * 0.38)}:force_original_aspect_ratio=increase,"
-             f"crop={W}:{int(H * 0.38)}[cam];[b]scale=-2:{H - int(H * 0.38)},crop={W}:{H - int(H * 0.38)}[game];[cam][game]vstack[v]")
+             f"crop={W}:{int(H * 0.38)}[cam];[b]scale=-2:{H - int(H * 0.38)},{gcrop}[game];[cam][game]vstack[v]")
     sub = str(ass).replace("\\", "/").replace(":", "\\:")
     return v + f";[v]fps=30,subtitles='{sub}'[vo]"
+
+
+def reframe_plan(source, s0, e0, layout, cam, face):
+    """(game crop-x expression, face-centred cam crop 'x:y:w:h', plan dict) - see reframe.py."""
+    import reframe
+    from common import ffprobe
+    st = next(x for x in ffprobe(source)["streams"] if x.get("codec_type") == "video")
+    sw, sh = int(st["width"]), int(st["height"])
+    panel_h = {"fill": H, "react": H - TOP, "facecam": H - int(H * 0.38)}[layout]
+    box = [float(v) for v in cam.split(":")] if layout in ("react", "facecam") and cam not in (None, "auto") else None
+    plan = reframe.plan_for_clip(source, s0, e0, sw, sh, W, panel_h, cam=box)
+    cam_crop = None
+    if box and face:
+        cam_h = TOP if layout == "react" else int(H * 0.38)
+        cam_crop = ":".join(f"{v:.4f}" for v in reframe.face_crop(box, face, sw, sh, W, cam_h))
+    plan["cam_crop"] = cam_crop
+    print(f"reframe: {len(plan['segments'])} gameplay segment(s) "
+          + ", ".join(f"{s['t0']:.1f}-{s['t1']:.1f}s @ {s['cx']:.2f}" for s in plan["segments"])
+          + (f"; cam panel centred on face {cam_crop}" if cam_crop else ""))
+    return reframe.crop_x_expr(plan["segments"]), cam_crop, plan
 
 
 def main():
@@ -138,6 +163,8 @@ def main():
     ap.add_argument("--hook", default=""); ap.add_argument("--credit", default="")
     ap.add_argument("--cam", default="auto", help="auto (find the webcam) or x:y:w:h fractions")
     ap.add_argument("--start", type=float); ap.add_argument("--end", type=float)
+    ap.add_argument("--reframe", choices=["auto", "off"], default="auto",
+                    help="auto: gameplay crop per scene (centre + action, never the webcam) and face-centred cam panel; off: old fixed crops")
     a = ap.parse_args()
     d = Path(a.job); c = load_json(d / "candidates.json")
     pick = next((x for x in c["candidates"] if x["n"] == a.pick), None)
@@ -146,7 +173,7 @@ def main():
     s0 = a.start if a.start is not None else pick["start"]; e0 = a.end if a.end is not None else pick["end"]
     words = load_json(d / "transcript.json")
     out = d / "edits"; out.mkdir(exist_ok=True)
-    layout, cam, side = a.layout, a.cam, 'right'
+    layout, cam, side, face = a.layout, a.cam, 'right', None
     if layout in ('react', 'facecam') and cam == 'auto':
         from facecam import find_cam
         r = find_cam(c['source'], s0, e0)
@@ -157,6 +184,7 @@ def main():
                 bw, bh = min(1.0, bx[2] * 2.6), min(1.0, bx[3] * 2.2)
                 bx = [min(max(0.0, cx - bw / 2), 1 - bw), min(max(0.0, cy - bh / 2), 1 - bh), bw, bh]
             cam = ':'.join(f'{v:.4f}' for v in bx)
+            face = r.get('face')
             side = 'left' if r['box'][0] + r['box'][2] / 2 < 0.5 else 'right'
             print(f"facecam: {r.get('mode')} box {cam} ({r.get('summary', '')})")
         else:
@@ -164,6 +192,9 @@ def main():
             layout = 'blur'
     elif layout in ('react', 'facecam') and cam != 'auto':
         side = 'left' if float(cam.split(':')[0]) + float(cam.split(':')[2]) / 2 < 0.5 else 'right'
+    game_x, cam_crop, plan = None, None, None
+    if a.reframe == "auto" and layout in ("fill", "react", "facecam"):
+        game_x, cam_crop, plan = reframe_plan(c["source"], s0, e0, layout, cam, face)
     cap_y = CAP_Y[layout]
     title, band = None, None
     if a.title and layout == 'react':
@@ -178,7 +209,7 @@ def main():
     caps = a.captions
     cap_words = words if caps != 'none' else []
     ass.write_text(build_ass(cap_words, s0, e0, a.hook, a.credit, cap_y, title=title, caps=caps), encoding="utf-8")
-    v = video_filter(layout, cam, ass, band=band, cam_side=side)
+    v = video_filter(layout, cam, ass, band=band, cam_side=side, game_x=game_x, cam_crop=cam_crop)
     mp4 = out / f"clip_{a.pick}.mp4"
     run([tool("ffmpeg"), "-y", "-v", "error", "-ss", f"{s0:.2f}", "-to", f"{e0:.2f}", "-i", c["source"],
          "-filter_complex", v, "-map", "[vo]", "-map", "0:a?", "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
@@ -186,7 +217,7 @@ def main():
          "-ar", "48000", "-movflags", "+faststart", str(mp4)])
     info = c.get("info", {})
     save_json(out / f"clip_{a.pick}.json", {"file": str(mp4), "start": s0, "end": e0, "layout": layout, "hook": a.hook or a.title, "title": a.title, "cam": cam,
-                                            "credit": a.credit, "source_url": info.get("webpage_url"), "source_title": info.get("title"),
+                                            "credit": a.credit, "reframe": plan, "source_url": info.get("webpage_url"), "source_title": info.get("title"),
                                             "source_channel": info.get("channel") or info.get("uploader")})
     print(mp4)
 
