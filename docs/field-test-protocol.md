@@ -1,7 +1,7 @@
-# Field test protocol: one real GTA Twitch VOD, three configurations, blind review
+# Field test protocol: one real GTA Twitch VOD (first 30 minutes), three configurations, blind review
 
-Status: **prepared, not run.** Nothing below has been executed on the target PC. Each stage needs the
-owner's approval before it runs.
+Status (2026-11-20): steps 0-1 done and GPU Whisper verified on the target PC (see
+docs/gpu-check-results.md). No VOD downloaded yet. Each remaining stage needs the owner's approval.
 
 ## Configurations
 
@@ -11,7 +11,7 @@ owner's approval before it runs.
 | B | `highlights.py` v1.2 (speech-aware edges) | `cut.py --reframe auto` | engine score |
 | C | same as B | same as B | + local VLM (`--judge ollama`, qwen2.5vl:7b) |
 
-Held constant: the same downloaded video file, one Whisper transcript (made once, copied to every
+Held constant: the first 30 minutes of the VOD (one downloaded file), one Whisper transcript (made once, copied to every
 configuration), one chat file, 5 clips per configuration, layout `react` (facecam on top, gameplay
 below), word captions, credit line, 1080×1920, −14 LUFS. B and C share the detector, so any span they
 both pick is rendered once and reviewed once.
@@ -30,10 +30,10 @@ both pick is rendered once and reviewed once.
 | Stage | Command (PowerShell, in `C:\Users\jamal\gtavi-test`) | Changes / downloads | GPU |
 |---|---|---|---|
 | 0 read-only checks | `Get-PSDrive C`, `nvidia-smi`, `where.exe TwitchDownloaderCLI ollama` | none | none |
-| 1 setup | clone branch, `py -3.14 -m venv --system-site-packages .venv`, `pip install opencv-python-headless "yt-dlp[default]" psutil pytest`, `pytest -q` | new folder; ~60 MB packages into the venv only | none |
+| 1 setup | clone branch, `py -3.14 -m venv .venv` (clean, isolated), `pip install -r requirements.txt -r requirements-dev.txt -r requirements-gpu-windows.txt`, `pytest -q` | done: 472 MB venv + 1.95 GB NVIDIA cuBLAS/cuDNN, venv only | GPU check only (done) |
 | 2 tools | install TwitchDownloaderCLI (GitHub release, x64 Windows); install Ollama and `ollama pull qwen2.5vl:7b` | CLI zip; Ollama app; 6.0 GB model | none |
-| 3 plan | `python bench\field_test.py plan "<VOD URL>" --minutes 90` | none (metadata only) | none |
-| 4 prepare | `python bench\field_test.py prepare "<VOD URL>" --name vod1 --minutes 90` | VOD (size from step 3), chat, Whisper large-v3-turbo 1.62 GB (first time) | Whisper fp16 |
+| 3 plan | `python bench\field_test.py plan "<VOD URL>" --minutes 30` | none (metadata only) | none |
+| 4 prepare | `python bench\field_test.py prepare "<VOD URL>" --name vod1 --minutes 30` | first 30 min of the VOD (~1-2 GB at 1080p; exact size from step 3), chat; Whisper model already cached | Whisper fp16, measured ~2.4 GB VRAM, ~40x real time on speech |
 | 5 detect | `python bench\field_test.py detect vod1` | none | light NVDEC frame sampling; config C loads the VLM |
 | 6 render | `python bench\field_test.py render vod1 --credit "@streamer"` | ≤ 15 MP4 files | none (libx264 on CPU) |
 | 7 page | `python bench\field_test.py page vod1` → open `bench\field\vod1\blind\rate.html` | copies of the renders | none |
