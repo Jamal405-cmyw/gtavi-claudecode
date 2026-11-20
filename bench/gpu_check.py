@@ -6,7 +6,7 @@ usage: python bench/gpu_check.py audio.wav [--reference script.txt] [--model lar
 Reports: CUDA DLL folders registered, model load time, transcription time, real-time factor, GPU memory
 (whole-GPU nvidia-smi samples every 0.1 s: idle baseline before loading, peak while running; the delta is
 what this process added) and, with --reference, word error rate against the known text. Transcription
-settings match moments.transcribe (word timestamps, VAD filter).
+settings and input path match moments.transcribe (16 kHz mono samples, word timestamps, VAD filter).
 """
 import argparse, json, re, shutil, subprocess, sys, threading, time, wave
 from pathlib import Path
@@ -63,6 +63,16 @@ def wer(ref, hyp):
     return round(prev[-1] / len(r), 4)
 
 
+def load_pcm(path):
+    """16 kHz mono float32 samples via ffmpeg, as moments.audio_rms/transcribe do. faster-whisper 1.2.1's
+    own file decoder calls av.open(metadata_errors=...), which PyAV 19 rejects, so never pass a path."""
+    import numpy as np
+    from common import tool
+    r = subprocess.run([tool("ffmpeg"), "-v", "error", "-i", str(path), "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
+                       capture_output=True, check=True)
+    return np.frombuffer(r.stdout, np.int16).astype(np.float32) / 32768
+
+
 def audio_seconds(path):
     try:
         with wave.open(str(path)) as w:
@@ -90,9 +100,10 @@ def main(argv=None):
             t = time.perf_counter()
             model = faster_whisper.WhisperModel(a.model, device=a.device, compute_type=a.compute)
             res["load_s"] = round(time.perf_counter() - t, 2)
+        pcm = load_pcm(a.audio)  # same input path as moments.transcribe (samples, not a file path)
         with Sampler() as s_run:
             t = time.perf_counter()
-            segs, info = model.transcribe(str(a.audio), word_timestamps=True, vad_filter=True)
+            segs, info = model.transcribe(pcm, word_timestamps=True, vad_filter=True)
             words = [w for seg in segs for w in (seg.words or [])]
             res["transcribe_s"] = round(time.perf_counter() - t, 2)
         res["status"] = "ok"
