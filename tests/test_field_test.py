@@ -19,7 +19,8 @@ def test_baseline_editing_and_detector_are_frozen():
         orig = subprocess.run(["git", "-C", str(ROOT), "show", f"67acdb4:scripts/{f}"], capture_output=True).stdout
         if not orig:
             pytest.skip("git history not available")
-        assert hashlib.sha256((ROOT / "bench" / "baseline" / f).read_bytes()).digest() == hashlib.sha256(orig).digest(), f
+        mine = (ROOT / "bench" / "baseline" / f).read_bytes().replace(b"\r\n", b"\n")  # CRLF checkouts on Windows
+        assert hashlib.sha256(mine).digest() == hashlib.sha256(orig).digest(), f
 
 
 @needs_ffmpeg
@@ -92,3 +93,14 @@ def test_missing_vlm_is_a_recorded_failure_not_a_silent_fallback(tmp_path, monke
 def test_code_change_is_flagged(tmp_path):
     hashes = FT.code_hashes()
     assert "scripts/highlight/engine.py" in hashes and "bench/baseline/cut.py" in hashes
+
+
+def test_code_hashes_ignore_line_endings(tmp_path, monkeypatch):
+    """Regression: on Windows (core.autocrlf=true) byte hashes differed from Linux for identical code."""
+    (tmp_path / "x.py").write_bytes(b"a = 1\r\nb = 2\r\n")
+    (tmp_path / "y.py").write_bytes(b"a = 1\nb = 2\n")
+    monkeypatch.setattr(FT, "ROOT", tmp_path)
+    monkeypatch.setattr(FT, "HASHED", ["x.py", "y.py"])
+    h = FT.code_hashes()
+    assert h["x.py"] == h["y.py"]
+

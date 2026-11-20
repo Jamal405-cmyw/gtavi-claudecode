@@ -95,7 +95,8 @@ def test_moments_transcribe_defaults_unchanged():
 def test_baseline_is_frozen():
     """The benchmark baseline must stay byte-identical to the original detector (commit 67acdb4)."""
     import hashlib
-    h = hashlib.sha256((ROOT / "bench" / "baseline" / "moments.py").read_bytes()).hexdigest()
+    # normalise line endings: Git for Windows checks files out with CRLF (core.autocrlf=true)
+    h = hashlib.sha256((ROOT / "bench" / "baseline" / "moments.py").read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     assert h == BASELINE_SHA256
 
 

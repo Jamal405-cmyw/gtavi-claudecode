@@ -37,7 +37,9 @@ HASHED = ["bench/baseline/moments.py", "bench/baseline/cut.py", "bench/baseline/
 
 
 def code_hashes():
-    return {f: hashlib.sha256((ROOT / f).read_bytes()).hexdigest()[:16] for f in HASHED if (ROOT / f).exists()}
+    # line endings normalised so a CRLF checkout (Git for Windows default) hashes like the repository
+    return {f: hashlib.sha256((ROOT / f).read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:16]
+            for f in HASHED if (ROOT / f).exists()}
 
 
 def commit():
