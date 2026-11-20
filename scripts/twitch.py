@@ -2,9 +2,10 @@
 
 top_streams(): Twitch's public web GQL endpoint with the public web Client-Id (same one yt-dlp uses).
 irc_chat():    anonymous IRC read-only chat (justinfan nick, no password).
-vod_chat():    not implemented, see note at the bottom.
+vod_chat():    VOD chat replay via TwitchDownloaderCLI (MIT, user-installed), if it is on PATH.
 """
-import json, random, socket, ssl, sys, threading, time
+import json, os, random, re, shutil, socket, ssl, subprocess, sys, threading, time
+from pathlib import Path
 from datetime import datetime, timezone
 
 GQL = "https://gql.twitch.tv/gql"
@@ -135,7 +136,43 @@ def irc_chat(channel, out_path, stop_event=None, host="irc.chat.twitch.tv", port
             stop_event.wait(3)
 
 
-def vod_chat(video_id):
-    """Not implemented: VideoCommentsByOffsetOrCursor is only served through a persisted-query sha256 hash
-    that cannot be verified offline here, and plain-text queries for it are rejected."""
-    raise NotImplementedError("Twitch VOD chat needs a persisted-query hash; not supported")
+CLI_HELP = ("Twitch VOD chat needs TwitchDownloaderCLI (https://github.com/lay295/TwitchDownloader/releases, "
+            "MIT). Put TwitchDownloaderCLI(.exe) on PATH or set TWITCH_DOWNLOADER_CLI to its full path, "
+            "or pass a chat file with --chat.")
+
+
+def vod_id(url_or_id):
+    """'https://www.twitch.tv/videos/123456789?t=1h' or 'v123456789' or '123456789' -> '123456789' (else None)."""
+    s = str(url_or_id).strip()
+    m = re.search(r"twitch\.tv/(?:[^/]+/)?videos?/(\d+)", s) or re.fullmatch(r"v?(\d{5,})", s)
+    return m.group(1) if m else None
+
+
+def find_cli():
+    env = os.environ.get("TWITCH_DOWNLOADER_CLI")
+    if env:
+        return env if Path(env).is_file() else None
+    return shutil.which("TwitchDownloaderCLI") or shutil.which("TwitchDownloaderCLI.exe")
+
+
+def vod_chat(video, out, end_seconds=None, timeout=3600):
+    """Download a VOD's chat replay to `out` + '.gz' (TwitchDownloader JSON, gzip) and return that path.
+    Offsets in the file are seconds from the start of the VOD. `end_seconds` stops early (use the same
+    limit as the video download). Raises RuntimeError with install instructions if the CLI is missing."""
+    vid = vod_id(video)
+    if not vid:
+        raise ValueError(f"not a Twitch VOD url or id: {video}")
+    exe = find_cli()
+    if not exe:
+        raise RuntimeError(CLI_HELP)
+    out = Path(out)
+    if out.suffix.lower() != ".json":
+        out = out.with_suffix(".json")
+    cmd = [exe, "chatdownload", "--id", vid, "-o", str(out), "--compression", "Gzip", "--collision", "Overwrite"]
+    if end_seconds:
+        cmd += ["-e", f"{int(end_seconds)}s"]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    got = Path(str(out) + ".gz")
+    if r.returncode != 0 or not got.exists():
+        raise RuntimeError(f"TwitchDownloaderCLI failed ({r.returncode}): {(r.stderr or r.stdout).strip()[-400:]}")
+    return got

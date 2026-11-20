@@ -11,7 +11,7 @@ usage: python highlights.py <url-or-file> [--top 8] [--min 15] [--max 40] [--cha
        [--max-minutes 90] [--dedupe-against jobs/*/highlights.json]
        [--judge ollama --judge-model qwen2.5vl:7b --judge-top 6]   optional local VLM, off by default
 """
-import argparse, glob, json, sys
+import argparse, glob, json, subprocess, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from common import ffprobe, job_dir, load_json
@@ -22,7 +22,7 @@ from highlight.engine import Config, analyse, has_video_stream, write_outputs
 def find_chat(d, arg):
     if arg:
         return Path(arg)
-    for pat in ("chat*.live_chat.json", "chat.json", "chat.jsonl", "chat.csv"):
+    for pat in ("chat*.live_chat.json", "chat.json", "chat.json.gz", "chat.jsonl", "chat.csv", "chat.txt"):
         hit = sorted(d.glob(pat))
         if hit:
             return hit[0]
@@ -36,6 +36,9 @@ def main(argv=None):
     ap.add_argument("--min", type=float, default=15); ap.add_argument("--max", type=float, default=40)
     ap.add_argument("--chat"); ap.add_argument("--chat-lag", type=float, default=5.0)
     ap.add_argument("--chat-offset", type=float, help="unix time of video second 0 (for live.py wall-clock chat logs)")
+    ap.add_argument("--chat-align", default="auto",
+                    help="TwitchDownloader offsets: auto | vod (video starts at VOD 0) | trimmed (video is the -b/-e window or clip) | seconds to add")
+    ap.add_argument("--no-twitch-chat", action="store_true", help="do not fetch Twitch VOD chat with TwitchDownloaderCLI")
     ap.add_argument("--cam", default="auto"); ap.add_argument("--no-visual", action="store_true")
     ap.add_argument("--hwaccel", default="auto", help="ffmpeg decode accel for frame sampling: auto|cuda|none")
     ap.add_argument("--whisper-model", default="auto"); ap.add_argument("--device", default="auto")
@@ -67,7 +70,21 @@ def main(argv=None):
             print(f"transcribing with faster-whisper {model} on {device}")
         words = moments.transcribe(wav, d, model=model, device=device)
     cpath = find_chat(d, a.chat)
-    msgs = CH.load(cpath, wall_offset=a.chat_offset) if cpath else None
+    twitch_note = None
+    if cpath is None and not a.no_twitch_chat:
+        import twitch
+        if twitch.vod_id(a.src) and "twitch.tv" in a.src:
+            try:
+                print("fetching Twitch VOD chat with TwitchDownloaderCLI")
+                cpath = twitch.vod_chat(a.src, d / "chat.json", end_seconds=a.max_minutes * 60)
+            except (RuntimeError, OSError, subprocess.TimeoutExpired) as ex:
+                twitch_note = f"Twitch chat not fetched: {str(ex)[:300]}"
+    align = a.chat_align
+    try:
+        align = float(align)
+    except ValueError:
+        pass
+    msgs, chat_info = CH.load_with_info(cpath, wall_offset=a.chat_offset, media_duration=dur, align=align) if cpath else (None, None)
     others = []
     for pat in a.dedupe_against:
         for f in glob.glob(pat):
@@ -79,6 +96,11 @@ def main(argv=None):
     res = analyse(vid, wav, words, dur, cfg, chat_msgs=msgs, info=info, d=d,
                   has_video=has_video_stream(probe), others=others)
     res["chat_file"] = str(cpath) if cpath else None
+    res["chat_info"] = chat_info
+    if twitch_note:
+        res["notes"].append(twitch_note)
+    if chat_info and chat_info.get("shift"):
+        res["notes"].append(f"chat offsets shifted by {chat_info['shift']:+.1f}s (TwitchDownloader trimmed window/clip)")
     write_outputs(d, res, vid, info)
     t = res["timings"]
     print(f"job: {d}\n{len(res['highlights'])} highlights ({len(res['duplicates'])} duplicates removed, "
