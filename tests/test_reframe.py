@@ -130,3 +130,18 @@ def test_cut_reframe_keeps_player_and_drops_webcam(tmp_path, layout, top):
     assert red_new > 0.9 * full_red                             # the centred player is fully in frame
     if layout == "react":
         assert red_old < 0.8 * full_red                         # old fixed edge crop cut part of the player off
+
+
+@pytest.mark.parametrize("layout", ["fill", "blur", "react", "facecam"])
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_old_call_signature_is_byte_identical(layout, side):
+    """translate.py and --reframe off call video_filter(layout, cam, ass[, band, cam_side]); output must not change."""
+    import importlib.util
+    import cut
+    spec = importlib.util.spec_from_file_location("cut_before", ROOT / "tests" / "fixtures" / "cut_before_reframe.py")
+    old = importlib.util.module_from_spec(spec); spec.loader.exec_module(old)
+    cam = "0.7000:0.0500:0.2800:0.3000"
+    assert cut.video_filter(layout, cam, "/tmp/a.ass", cam_side=side) == old.video_filter(layout, cam, "/tmp/a.ass", cam_side=side)
+    band = (600, 200, 3)
+    assert cut.video_filter(layout, cam, "/tmp/a.ass", band=band, cam_side=side) == \
+        old.video_filter(layout, cam, "/tmp/a.ass", band=band, cam_side=side)

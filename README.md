@@ -60,7 +60,7 @@ No income is promised. Your result depends on speed, picks and hooks, and the sc
 | `moment-finder` | Best 15 to 40 s moments from a two-stage engine: cheap audio/transcript/chat scan, then frames, boundaries and scoring for the shortlist only ([how it works](docs/highlight-engine.md)) |
 | `live-mode` | Records a live stream and cuts a clip every time chat explodes |
 | `twitch-reaction` | Reaction clips like the viral ones: the streamer's face on top, the game below, a big title on the seam. Finds the top GTA 6 Twitch streams with no account, reads chat and finds the webcam by itself |
-| `clip-cutter` | 1080x1920 clip: word-by-word captions, hook box, credit line, -14 LUFS. Fill, blurred background or facecam on top |
+| `clip-cutter` | 1080x1920 clip: word-by-word captions, hook box, credit line, -14 LUFS. Fill, blurred background or facecam on top, with facecam-aware reframing that keeps the player in frame |
 | `hook-writer` | 3 hook options per clip |
 | `rule-check` | Length, format, credit, hashtags and banned content checked before you post |
 | `multilang` | One clip in 5 languages: translated word-by-word captions and hook in ES, PT, DE, RU, optional stock-voice hook. Non-English GTA pages are almost empty |
@@ -98,6 +98,6 @@ python -m pytest
 python bench/make_synthetic.py && python bench/run_benchmark.py
 ```
 
-See [docs/AUDIT.md](docs/AUDIT.md) for the code audit, [docs/real-vod-test.md](docs/real-vod-test.md) to compare detectors blind on a real VOD, and [bench/README.md](bench/README.md) for labelled benchmarks.
+See [docs/AUDIT.md](docs/AUDIT.md) for the code audit, [docs/OPEN_SOURCE_INTEGRATION_AUDIT.md](docs/OPEN_SOURCE_INTEGRATION_AUDIT.md) for the review of 20 open-source tools, [docs/real-vod-test.md](docs/real-vod-test.md) to compare detectors blind on a real VOD, and [bench/README.md](bench/README.md) for labelled benchmarks.
 
 MIT license.

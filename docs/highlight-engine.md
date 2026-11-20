@@ -39,6 +39,7 @@ python scripts/cut.py jobs/<id> --pick 1 --layout react --cam auto --credit "@st
 | `scoring.py` | dimension scores, confidence, evidence strings, disclaimer |
 | `dedupe.py` | same-video and cross-job duplicate detection |
 | `dialogue.py` | setup→payoff, question→reaction, stunned silence, argument, GTA events in speech, verbatim setup/reaction lines |
+| `speech.py` | speech segments on shortlisted windows: Silero VAD bundled in faster-whisper, Auto-Editor-style loudness fallback |
 | `judge.py` | optional Stage C: local VLM via Ollama on the top 6 clips ([docs/vlm-judge.md](vlm-judge.md)) |
 | `engine.py` | orchestration, timings, output files |
 | `accel.py` | CUDA detection, Whisper model choice, ffmpeg hwaccel choice |
@@ -67,6 +68,16 @@ not predict views; `highlights.md` says so at the top.
 - Reaction gate: when a transcript, chat or facecam is available and nobody reacts (no laugh,
   exclamation, chat burst or facecam movement), entertainment × 0.6; a lone 1 s spike × 0.8.
 - Clip ends extend past a reaction that is still going (laughter, chat), up to +10 s.
+
+## Speech-aware edges and chat formats (v1.2)
+
+- After the context-aware boundaries, clip edges are snapped to speech segments: a start inside an
+  utterance moves back to its onset (≤ 3 s) or past it; an end inside one extends to its end or pulls
+  back before it; leading/trailing silence is trimmed. Event region and length limits always win.
+  `--speech-snap off` disables it. Cost: ~0.5 s per 5-minute synthetic video on 2 CPU cores.
+- Chat: TwitchDownloader JSON (plain or `.gz`), its TXT exports, YouTube replay, JSONL and CSV;
+  trimmed/clip TwitchDownloader chat is realigned (`--chat-align`). Twitch VOD URLs fetch chat through
+  a user-installed TwitchDownloaderCLI. See docs/OPEN_SOURCE_INTEGRATION_AUDIT.md.
 
 ## GPU and CPU
 
@@ -98,7 +109,7 @@ Override with `--whisper-model small|medium|large-v3|...`, `--device cpu`, `--hw
 - Thresholds were set on synthetic signals. They need checking against labelled real recordings with
   `bench/run_benchmark.py` before anyone relies on the numbers.
 
-## Test suite (61 tests) — review notes
+## Test suite — review notes
 
 - Weakness found and fixed: the first 29 tests mostly used the same synthetic generator the
   thresholds were tuned on, so they partly re-tested the tuning. New regression tests use hand-built
@@ -112,6 +123,9 @@ Override with `--whisper-model small|medium|large-v3|...`, `--device cpu`, `--hw
   release, unreachable server, missing model, malformed answers, cache, contact sheet, engine run).
 - `tests/test_compare_vod.py` — blind real-VOD workflow end to end, including a JavaScript check of
   the rating page.
-- Not covered by automated tests: real Whisper transcription, real CUDA decode, a real VLM, and any
-  real stream footage.
+- `tests/test_twitch_chat.py`, `tests/test_speech_boundaries.py`, `tests/test_reframe.py` — the
+  open-source integrations (TwitchDownloader formats + fake CLI, Silero VAD + snapping rules,
+  reframing planner + rendered-frame checks + byte-identical old filter graphs).
+- Not covered by automated tests: real Whisper transcription, real CUDA decode, a real VLM, a real
+  TwitchDownloaderCLI download, YuNet face-centred cam crop on a real webcam, and any real stream footage.
 

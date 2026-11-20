@@ -13,6 +13,11 @@ Run:
 - `blur`: full video centered over a blurred copy. Use when cropping would cut off the action.
 - `facecam`: gameplay with the streamer's camera shown. Use for reactions.
 
+Reframing is automatic (`--reframe auto`): the gameplay panel stays on the player (screen centre),
+follows the action within limits, switches position only at scene cuts, and never shows the webcam a
+second time; the camera panel is centred on the streamer's face when it was detected. Use
+`--reframe off` to get the previous fixed crops.
+
 Before running:
 
 1. Get 3 hook options from the `hook-writer` skill and use the best one.

@@ -6,4 +6,4 @@ scoring with confidence and evidence, duplicate removal, ranking.
 
 Entry point: highlight.engine.run(...) or scripts/highlights.py on the command line.
 """
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "1.2.0"

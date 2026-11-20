@@ -19,8 +19,13 @@ faster-whisper README to fix it.
 ## 1. Get the chat (strongly recommended)
 
 - YouTube VOD of a past live stream: nothing to do, chat replay is fetched automatically.
-- Twitch VOD: download chat with TwitchDownloaderCLI:
-  `TwitchDownloaderCLI chatdownload --id <vod id> -o chat.json`
+- Twitch VOD: install TwitchDownloaderCLI once from its GitHub releases page
+  (https://github.com/lay295/TwitchDownloader/releases, `TwitchDownloaderCLI.exe`) and put it on PATH
+  or set `TWITCH_DOWNLOADER_CLI` to its full path. `scripts/highlights.py` then fetches the chat for
+  `twitch.tv/videos/...` URLs by itself (gzip, limited to `--max-minutes`). Manual alternative:
+  `TwitchDownloaderCLI chatdownload --id <vod id> -o chat.json --compression Gzip --collision Overwrite`
+  and pass `--chat chat.json.gz`. If you trimmed the chat (`-b/-e`) to match a trimmed video, the
+  offsets are realigned automatically (`--chat-align auto`).
 
 ## 2. Run both detectors blind
 
