@@ -23,6 +23,8 @@ class Bounds:
     mid_sentence_start: bool
     mid_sentence_end: bool
     dangling_start: bool
+    mid_speech_start: bool = None   # set by snap_to_speech (None = no speech segments were used)
+    mid_speech_end: bool = None
 
     def as_dict(self):
         return {k: (round(v, 2) if isinstance(v, float) else v) for k, v in asdict(self).items()}
@@ -137,3 +139,54 @@ def compute(peak, score, words, db, duration, min_len=15.0, max_len=40.0, lead=(
     mid_end = any(w["s"] < end - 0.05 < w["e"] for w in words) or (
         last_i is not None and last_i not in eset and words[last_i + 1]["s"] < end + 0.6)
     return Bounds(round(start, 2), round(end, 2), ev_s, ev_e, s_reason, e_reason, bool(mid_start), bool(mid_end), bool(dangling))
+
+
+def _inside(t, segs, edge=0.05):
+    return next(((s, e) for s, e in segs if s + edge < t < e - edge), None)
+
+
+def snap_to_speech(b, segs, duration, min_len=15.0, max_len=40.0, max_move=3.0, pad=0.12):
+    """Move clip edges off the middle of an utterance and trim dead air at the ends, using speech
+    segments. Never drops the event region, never breaks the length limits; returns a new Bounds."""
+    if not segs:
+        return b
+    start, end = b.start, b.end
+    s_note, e_note = [], []
+    ev_s, ev_e = b.ev_start, b.ev_end
+    # ---- start: inside an utterance -> back to its onset, else forward to the next one
+    hit = _inside(start, segs)
+    if hit:
+        back = max(0.0, hit[0] - pad)
+        fwd = hit[1] + pad
+        if start - back <= max_move and end - back <= max_len:
+            start = back; s_note.append("moved back to speech onset")
+        elif fwd <= ev_s - 1.0 and end - fwd >= min_len:
+            nxt = next((s for s, e in segs if s >= hit[1]), None)
+            start = max(fwd, (nxt - pad) if nxt else fwd); s_note.append("moved past a cut-off utterance")
+    else:
+        nxt = next((s for s, e in segs if s >= start), None)
+        if nxt is not None and 0.6 < nxt - start <= max_move and nxt - pad <= ev_s - 1.0 and end - (nxt - pad) >= min_len:
+            start = nxt - pad; s_note.append("trimmed silence before first speech")
+    # ---- end: inside an utterance -> to its end, else trim trailing silence
+    hit = _inside(end, segs)
+    if hit:
+        fwd = min(duration, hit[1] + pad)
+        back = hit[0] - pad
+        if fwd - end <= max_move and fwd - start <= max_len:
+            end = fwd; e_note.append("extended to end of utterance")
+        elif back >= ev_e + 0.5 and back - start >= min_len:
+            end = back; e_note.append("pulled back before a cut-off utterance")
+    else:
+        prev = max((e for s, e in segs if e <= end), default=None)
+        if prev is not None and end - prev > 1.2:
+            new = prev + 0.5
+            if new >= ev_e + 0.5 and new - start >= min_len:
+                end = new; e_note.append("trimmed trailing silence")
+    start, end = round(max(0.0, start), 2), round(min(duration, end), 2)
+    out = Bounds(start, end, b.ev_start, b.ev_end,
+                 b.start_reason + ("; " + ", ".join(s_note) if s_note else ""),
+                 b.end_reason + ("; " + ", ".join(e_note) if e_note else ""),
+                 b.mid_sentence_start, b.mid_sentence_end, b.dangling_start)
+    out.mid_speech_start = _inside(start, segs) is not None
+    out.mid_speech_end = _inside(end, segs) is not None
+    return out

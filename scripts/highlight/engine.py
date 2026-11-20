@@ -11,7 +11,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 import numpy as np
 from . import ENGINE_VERSION, accel, audio as A, boundaries as B, candidates as C, chat as CH, dedupe as D
-from . import judge as J, scoring as S, text as T, visual as V
+from . import judge as J, scoring as S, speech as SP, text as T, visual as V
 
 
 @dataclass
@@ -30,6 +30,7 @@ class Config:
     weights: dict = field(default_factory=dict)
     seed: int = 0
     min_evidence: int = 1         # modalities that must clearly fire for a pick to be kept
+    speech_snap: str = "auto"     # auto | silero | energy | off - snap clip edges to speech segments
     judge: str = "none"           # none | ollama  (optional local VLM re-scoring of the top clips)
     judge_model: str = "qwen2.5vl:7b"
     judge_host: str = "http://127.0.0.1:11434"
@@ -106,6 +107,16 @@ def analyse(video, wav, words, duration, cfg=Config(), chat_msgs=None, info=None
     for p in st.shortlist:
         b = B.compute(p, st.score, words, au["db"], duration, cfg.min_len, cfg.max_len, reaction=feats["reaction"])
         cands.append({"peak": p, "b": b})
+    if cands and cfg.speech_snap != "off":
+        t_sp = time.perf_counter()
+        x = A.read_wav(wav)
+        segs, used = SP.segments(x, [(c["b"].start - 5, c["b"].end + 5) for c in cands], cfg.speech_snap)
+        for c in cands:
+            c["b"] = B.snap_to_speech(c["b"], segs, duration, cfg.min_len, cfg.max_len)
+        tm["speech_s"] = round(time.perf_counter() - t_sp, 3)
+        tm["speech_method"] = used
+        if used == "energy":
+            notes.append("speech segments from loudness (faster-whisper VAD unavailable): game audio counts as sound")
     box, base = None, None
     do_vis = cfg.visual and has_video and video is not None and bool(cands)
     if do_vis:
