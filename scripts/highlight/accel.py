@@ -5,6 +5,11 @@ import functools, shutil, subprocess
 @functools.lru_cache(maxsize=1)
 def cuda_devices():
     try:
+        import cuda_dlls
+        cuda_dlls.register()
+    except ImportError:
+        pass
+    try:
         import ctranslate2
         return int(ctranslate2.get_cuda_device_count())
     except Exception:

@@ -53,6 +53,8 @@ def transcribe(wav, d, model="small", device=None):
     out = d / "transcript.json"
     if out.exists():
         return load_json(out)
+    import cuda_dlls
+    cuda_dlls.register()  # Windows: pip-installed cuBLAS/cuDNN (requirements-gpu-windows.txt); no-op elsewhere
     from faster_whisper import WhisperModel
     if device in ("cuda", "cpu"):
         cuda = device == "cuda"

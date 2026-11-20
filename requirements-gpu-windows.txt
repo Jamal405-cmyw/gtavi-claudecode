@@ -1,0 +1,4 @@
+# Windows + NVIDIA GPU only: CUDA 12 cuBLAS and cuDNN 9 for faster-whisper/CTranslate2 (about 1.25 GB).
+# Installed into the project venv only; scripts/cuda_dlls.py makes them visible to the current process.
+nvidia-cublas-cu12>=12.4,<13
+nvidia-cudnn-cu12>=9,<10
