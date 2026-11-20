@@ -38,6 +38,8 @@ def main(argv=None):
     ap.add_argument("--chat-offset", type=float, help="unix time of video second 0 (for live.py wall-clock chat logs)")
     ap.add_argument("--chat-align", default="auto",
                     help="TwitchDownloader offsets: auto | vod (video starts at VOD 0) | trimmed (video is the -b/-e window or clip) | seconds to add")
+    ap.add_argument("--speech-snap", choices=["auto", "silero", "energy", "off"], default="auto",
+                    help="snap clip edges to speech (Silero VAD bundled in faster-whisper; energy fallback)")
     ap.add_argument("--no-twitch-chat", action="store_true", help="do not fetch Twitch VOD chat with TwitchDownloaderCLI")
     ap.add_argument("--cam", default="auto"); ap.add_argument("--no-visual", action="store_true")
     ap.add_argument("--hwaccel", default="auto", help="ffmpeg decode accel for frame sampling: auto|cuda|none")
@@ -92,7 +94,7 @@ def main(argv=None):
                 others += json.loads(Path(f).read_text(encoding="utf-8")).get("highlights", [])
     cfg = Config(top=a.top, min_len=a.min, max_len=a.max, chat_lag=a.chat_lag, chat_offset=a.chat_offset,
                  visual=not a.no_visual, cam=a.cam, hwaccel=a.hwaccel, judge=a.judge, judge_model=a.judge_model,
-                 judge_host=a.judge_host, judge_top=a.judge_top, judge_weight=a.judge_weight, judge_images=bool(a.judge_images))
+                 speech_snap=a.speech_snap, judge_host=a.judge_host, judge_top=a.judge_top, judge_weight=a.judge_weight, judge_images=bool(a.judge_images))
     res = analyse(vid, wav, words, dur, cfg, chat_msgs=msgs, info=info, d=d,
                   has_video=has_video_stream(probe), others=others)
     res["chat_file"] = str(cpath) if cpath else None

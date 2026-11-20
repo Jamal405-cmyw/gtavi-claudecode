@@ -108,3 +108,8 @@ def test_engine_clip_edges_are_not_mid_utterance(tmp_path):
     assert len(flagged) <= len(res["highlights"]) // 2
     off = engine.analyse(None, tmp_path / "a.wav", words, 150.0, engine.Config(visual=False, speech_snap="off"), chat_msgs=msgs)
     assert "speech_s" not in off["timings"]
+
+
+def test_cli_exposes_speech_snap():
+    import highlights, inspect
+    assert '"--speech-snap"' in inspect.getsource(highlights.main) and "speech_snap=a.speech_snap" in inspect.getsource(highlights.main)
