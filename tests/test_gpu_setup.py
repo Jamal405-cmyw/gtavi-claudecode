@@ -64,4 +64,4 @@ def test_gpu_check_load_pcm(tmp_path):
     p = tmp_path / "s.wav"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=300:d=2", "-ar", "44100", "-ac", "2", str(p)], check=True)
     x = gpu_check.load_pcm(p)
-    assert x.dtype.name == "float32" and abs(len(x) - 32000) <= 160 and 0.1 < abs(x).max() <= 1.0
+    assert x.dtype.name == "float32" and abs(len(x) - 32000) <= 160 and 0.05 < abs(x).max() <= 1.0  # lavfi sine = 1/8 amplitude
